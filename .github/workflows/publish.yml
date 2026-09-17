@@ -42,8 +42,12 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build
-        run: npm run build
+      - name: Build deterministically
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          npm run build
 
       - name: Dependency audit
         run: npm audit
@@ -51,5 +55,74 @@ jobs:
       - name: Inspect package
         run: npm pack --dry-run --json
 
+      - name: Check npm registry version
+        id: registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+
+          set +e
+          VIEW_OUTPUT="$(npm view "${NAME}@${VERSION}" version --json 2>&1)"
+          VIEW_STATUS=$?
+          set -e
+
+          if [ "$VIEW_STATUS" -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${NAME}@${VERSION} already exists in the npm registry."
+          elif printf '%s' "$VIEW_OUTPUT" | grep -q 'E404'; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "${NAME}@${VERSION} is not published yet."
+          else
+            printf '%s\n' "$VIEW_OUTPUT" >&2
+            exit "$VIEW_STATUS"
+          fi
+
       - name: Publish with provenance
+        if: steps.registry.outputs.exists == 'false'
         run: npm publish --access public --provenance
+
+      - name: Verify registry package matches local build
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+
+          LOCAL_PACK_DIR="$RUNNER_TEMP/local-pack"
+          REGISTRY_PACK_DIR="$RUNNER_TEMP/registry-pack"
+          LOCAL_UNPACK_DIR="$RUNNER_TEMP/local-unpack"
+          REGISTRY_UNPACK_DIR="$RUNNER_TEMP/registry-unpack"
+
+          rm -rf "$LOCAL_PACK_DIR" "$REGISTRY_PACK_DIR" "$LOCAL_UNPACK_DIR" "$REGISTRY_UNPACK_DIR"
+          mkdir -p "$LOCAL_PACK_DIR" "$REGISTRY_PACK_DIR" "$LOCAL_UNPACK_DIR" "$REGISTRY_UNPACK_DIR"
+
+          LOCAL_JSON="$(npm pack --json --pack-destination "$LOCAL_PACK_DIR")"
+          LOCAL_FILENAME="$(node -e 'const p=JSON.parse(process.argv[1]); if (!p[0]?.filename) process.exit(1); console.log(p[0].filename)' "$LOCAL_JSON")"
+
+          REGISTRY_JSON=''
+          REGISTRY_STATUS=1
+          for ATTEMPT in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            rm -f "$REGISTRY_PACK_DIR"/*.tgz
+            set +e
+            REGISTRY_JSON="$(npm pack "${NAME}@${VERSION}" --json --pack-destination "$REGISTRY_PACK_DIR" 2>"$RUNNER_TEMP/registry-pack.err")"
+            REGISTRY_STATUS=$?
+            set -e
+            if [ "$REGISTRY_STATUS" -eq 0 ]; then
+              break
+            fi
+            if [ "$ATTEMPT" -eq 12 ]; then
+              cat "$RUNNER_TEMP/registry-pack.err" >&2
+              exit "$REGISTRY_STATUS"
+            fi
+            sleep 5
+          done
+
+          REGISTRY_FILENAME="$(node -e 'const p=JSON.parse(process.argv[1]); if (!p[0]?.filename) process.exit(1); console.log(p[0].filename)' "$REGISTRY_JSON")"
+
+          tar -xzf "$LOCAL_PACK_DIR/$LOCAL_FILENAME" -C "$LOCAL_UNPACK_DIR"
+          tar -xzf "$REGISTRY_PACK_DIR/$REGISTRY_FILENAME" -C "$REGISTRY_UNPACK_DIR"
+
+          diff -qr "$LOCAL_UNPACK_DIR/package" "$REGISTRY_UNPACK_DIR/package"
+          echo "Verified ${NAME}@${VERSION}: registry package contents match the local release build."
