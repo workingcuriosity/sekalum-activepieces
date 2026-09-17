@@ -1,0 +1,54 @@
+{
+  "name": "@workingcuriosity/piece-sekalum",
+  "version": "0.1.0",
+  "description": "Sekalum Consumer API piece for Activepieces",
+  "license": "MIT",
+  "homepage": "https://github.com/workingcuriosity/sekalum-activepieces#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/workingcuriosity/sekalum-activepieces.git"
+  },
+  "bugs": {
+    "url": "https://github.com/workingcuriosity/sekalum-activepieces/issues"
+  },
+  "keywords": [
+    "activepieces",
+    "credentials",
+    "secrets",
+    "sekalum",
+    "workingcuriosity"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp -R src/assets dist/assets",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test"
+  },
+  "dependencies": {
+    "@activepieces/pieces-framework": "0.32.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.7.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "ai": "6.0.282",
+    "deepmerge-ts": "8.0.2",
+    "nanoid": "3.3.19",
+    "expr-eval": "npm:@keep-lts/expr-eval@2.0.3"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

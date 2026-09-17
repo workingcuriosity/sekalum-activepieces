@@ -1,0 +1,55 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify tag and package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_NAME='@workingcuriosity/piece-sekalum'
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="${GITHUB_REF_NAME}"
+          test "$NAME" = "$EXPECTED_NAME"
+          test "$TAG" = "v$VERSION"
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Type check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Dependency audit
+        run: npm audit
+
+      - name: Inspect package
+        run: npm pack --dry-run --json
+
+      - name: Publish with provenance
+        run: npm publish --access public --provenance
